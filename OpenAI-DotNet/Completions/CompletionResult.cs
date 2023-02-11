@@ -15,13 +15,14 @@ namespace OpenAI.Completions
             string @object,
             int createdUnixTime,
             string model,
-            IReadOnlyList<Choice> completions)
+            IReadOnlyList<Choice> completions, Usage usage)
         {
             Id = id;
             Object = @object;
             CreatedUnixTime = createdUnixTime;
             Model = model;
             Completions = completions;
+            Usage = usage;
         }
 
         /// <summary>
@@ -53,6 +54,10 @@ namespace OpenAI.Completions
         /// </summary>
         [JsonPropertyName("choices")]
         public IReadOnlyList<Choice> Completions { get; }
+
+
+        [JsonPropertyName("usage")]
+        public Usage Usage { get; }
 
         /// <summary>
         /// Gets the text of the first completion, representing the main result
