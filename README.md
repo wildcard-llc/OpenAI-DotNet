@@ -40,7 +40,10 @@ Install-Package OpenAI-DotNet
   - [Retrieve Models](#retrieve-model)
   - [Delete Fine Tuned Model](#delete-fine-tuned-model)
 - [Completions](#completions)
-  - [Streaming](#streaming)
+  - [Streaming](#completion-streaming)
+- [Chat](#chat)
+  - [Chat Completions](#chat-completions)
+  - [Streaming](#chat-streaming)
 - [Edits](#edits)
   - [Create Edit](#create-edit)
 - [Embeddings](#embeddings)
@@ -78,13 +81,13 @@ You use the `OpenAIAuthentication` when you initialize the API as shown:
 #### Pass keys directly with constructor
 
 ```csharp
-var api = new OpenAIClient("sk-mykeyhere");
+var api = new OpenAIClient("sk-apiKey");
 ```
 
 Or create a `OpenAIAuthentication` object manually
 
 ```csharp
-var api = new OpenAIClient(new OpenAIAuthentication("sk-secretkey"));
+var api = new OpenAIClient(new OpenAIAuthentication("sk-apiKey", "org-yourOrganizationId"));
 ```
 
 #### Load key from configuration file
@@ -122,16 +125,10 @@ var api = new OpenAIClient(OpenAIAuthentication.LoadFromDirectory("your/path/to/
 Use your system's environment variables specify an api key and organization to use.
 
 - Use `OPENAI_API_KEY` for your api key.
-- Use `OPEN_AI_ORGANIZATION_ID` to specify an organization.
+- Use `OPENAI_ORGANIZATION_ID` to specify an organization.
 
 ```csharp
 var api = new OpenAIClient(OpenAIAuthentication.LoadFromEnv());
-```
-
-or
-
-```csharp
-var api = new OpenAIClient(OpenAIAuthentication.LoadFromEnv("org-yourOrganizationId"));
 ```
 
 ### [Models](https://beta.openai.com/docs/api-reference/models)
@@ -186,7 +183,7 @@ Console.WriteLine(result);
 
 > To get the `CompletionResult` (which is mostly metadata), use its implicit string operator to get the text if all you want is the completion choice.
 
-#### Streaming
+#### Completion Streaming
 
 Streaming allows you to get results are they are generated, which can help your application feel more responsive, especially on slow models like Davinci.
 
@@ -210,6 +207,34 @@ await foreach (var token in api.CompletionsEndpoint.StreamCompletionEnumerableAs
 {
   Console.WriteLine(token);
 }
+```
+
+### [Chat](https://platform.openai.com/docs/api-reference/chat)
+
+Given a chat conversation, the model will return a chat completion response.
+
+#### [Chat Completions](https://platform.openai.com/docs/api-reference/chat/create)
+
+Creates a completion for the chat message
+
+```csharp
+var api = new OpenAIClient();
+var chatPrompts = new List<ChatPrompt>
+{
+    new ChatPrompt("system", "You are a helpful assistant."),
+    new ChatPrompt("user", "Who won the world series in 2020?"),
+    new ChatPrompt("assistant", "The Los Angeles Dodgers won the World Series in 2020."),
+    new ChatPrompt("user", "Where was it played?"),
+};
+var chatRequest = new ChatRequest(chatPrompts);
+var result = await api.ChatEndpoint.GetCompletionAsync(chatRequest);
+Console.WriteLine(result.FirstChoice);
+```
+
+##### [Chat Streaming](https://platform.openai.com/docs/api-reference/chat/create#chat/create-stream)
+
+```csharp
+TODO
 ```
 
 ### [Edits](https://beta.openai.com/docs/api-reference/edits)
@@ -243,7 +268,8 @@ Creates an embedding vector representing the input text.
 
 ```csharp
 var api = new OpenAIClient();
-var result = await api.EmbeddingsEndpoint.CreateEmbeddingAsync("The food was delicious and the waiter...");
+var model = await api.ModelsEndpoint.GetModelDetailsAsync("text-embedding-ada-002");
+var result = await api.EmbeddingsEndpoint.CreateEmbeddingAsync("The food was delicious and the waiter...", model);
 Console.WriteLine(result);
 ```
 
