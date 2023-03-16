@@ -1,6 +1,14 @@
-# C#/.NET SDK for accessing the OpenAI GPT-3 API
+# OpenAI-DotNet
 
-A simple C# .NET wrapper library to use with [OpenAI](https://openai.com/)'s GPT-3 API.  More context [on Roger Pincombe's blog](https://rogerpincombe.com/openai-dotnet-api) and forked from [OpenAI-API-dotnet](https://github.com/OkGoDoIt/OpenAI-API-dotnet).
+[![Discord](https://img.shields.io/discord/855294214065487932.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/xQgMW9ufN4)
+[![NuGet version (OpenAI-DotNet)](https://img.shields.io/nuget/v/OpenAI-DotNet.svg)](https://www.nuget.org/packages/OpenAI-DotNet/)
+[![Nuget Publish](https://github.com/RageAgainstThePixel/OpenAI-DotNet/actions/workflows/Publish-Nuget.yml/badge.svg)](https://github.com/RageAgainstThePixel/OpenAI-DotNet/actions/workflows/Publish-Nuget.yml)
+
+A simple C# .NET client library for [OpenAI](https://openai.com/) to use use chat-gpt, GPT-4, GPT-3.5-Turbo and Dall-E though their RESTful API (currently in beta). Independently developed, this is not an official library and I am not affiliated with OpenAI. An OpenAI API account is required.
+
+Forked from [OpenAI-API-dotnet](https://github.com/OkGoDoIt/OpenAI-API-dotnet).
+
+More context [on Roger Pincombe's blog](https://rogerpincombe.com/openai-dotnet-api).
 
 > This repository is available to transfer to the OpenAI organization if they so choose to accept it.
 
@@ -15,10 +23,6 @@ It should also work across Windows, Linux, and Mac.
 ## Getting started
 
 ### Install from NuGet
-
-[![NuGet version (OpenAI-DotNet)](https://img.shields.io/nuget/v/OpenAI-DotNet.svg)](https://www.nuget.org/packages/OpenAI-DotNet/)
-[![Nuget Publish](https://github.com/RageAgainstThePixel/OpenAI-DotNet/actions/workflows/Publish-Nuget.yml/badge.svg)](https://github.com/RageAgainstThePixel/OpenAI-DotNet/actions/workflows/Publish-Nuget.yml)
-[![Discord](https://img.shields.io/discord/855294214065487932.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/xQgMW9ufN4)
 
 Install package [`OpenAI` from Nuget](https://www.nuget.org/packages/OpenAI-DotNet/).  Here's how via command line:
 
@@ -35,6 +39,7 @@ Install-Package OpenAI-DotNet
 ### Table of Contents
 
 - [Authentication](#authentication)
+- [Azure OpenAI](#azure-openai)
 - [Models](#models)
   - [List Models](#list-models)
   - [Retrieve Models](#retrieve-model)
@@ -48,6 +53,9 @@ Install-Package OpenAI-DotNet
   - [Create Edit](#create-edit)
 - [Embeddings](#embeddings)
   - [Create Embedding](#create-embeddings)
+- [Audio](#audio)
+  - [Create Transcription](#create-transcription)
+  - [Create Translation](#create-translation)
 - [Images](#images)
   - [Create Image](#create-image)
   - [Edit Image](#edit-image)
@@ -129,6 +137,17 @@ Use your system's environment variables specify an api key and organization to u
 
 ```csharp
 var api = new OpenAIClient(OpenAIAuthentication.LoadFromEnv());
+```
+
+### [Azure OpenAI](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/)
+
+You can also choose to use Microsoft's Azure OpenAI deployments as well.
+To setup the client to use your deployment, you'll need to pass in `OpenAIClientSettings` into the client constructor.
+
+```csharp
+var auth = new OpenAIAuthentication("sk-apiKey");
+var settings = new OpenAIClientSettings("your-resource", "your-deployment-id");
+var api = new OpenAIClient(auth, settings);
 ```
 
 ### [Models](https://beta.openai.com/docs/api-reference/models)
@@ -234,7 +253,39 @@ Console.WriteLine(result.FirstChoice);
 ##### [Chat Streaming](https://platform.openai.com/docs/api-reference/chat/create#chat/create-stream)
 
 ```csharp
-TODO
+var api = new OpenAIClient();
+var chatPrompts = new List<ChatPrompt>
+{
+    new ChatPrompt("system", "You are a helpful assistant."),
+    new ChatPrompt("user", "Who won the world series in 2020?"),
+    new ChatPrompt("assistant", "The Los Angeles Dodgers won the World Series in 2020."),
+    new ChatPrompt("user", "Where was it played?"),
+};
+var chatRequest = new ChatRequest(chatPrompts, Model.GPT3_5_Turbo);
+
+await api.ChatEndpoint.StreamCompletionAsync(chatRequest, result =>
+{
+    Console.WriteLine(result.FirstChoice);
+});
+```
+
+Or if using [`IAsyncEnumerable{T}`](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.iasyncenumerable-1?view=net-5.0) ([C# 8.0+](https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/november/csharp-iterating-with-async-enumerables-in-csharp-8))
+
+```csharp
+var api = new OpenAIClient();
+var chatPrompts = new List<ChatPrompt>
+{
+    new ChatPrompt("system", "You are a helpful assistant."),
+    new ChatPrompt("user", "Who won the world series in 2020?"),
+    new ChatPrompt("assistant", "The Los Angeles Dodgers won the World Series in 2020."),
+    new ChatPrompt("user", "Where was it played?"),
+};
+var chatRequest = new ChatRequest(chatPrompts, Model.GPT3_5_Turbo);
+
+await foreach (var result in api.ChatEndpoint.StreamCompletionEnumerableAsync(chatRequest))
+{
+    Console.WriteLine(result.FirstChoice);
+}
 ```
 
 ### [Edits](https://beta.openai.com/docs/api-reference/edits)
@@ -270,6 +321,32 @@ Creates an embedding vector representing the input text.
 var api = new OpenAIClient();
 var model = await api.ModelsEndpoint.GetModelDetailsAsync("text-embedding-ada-002");
 var result = await api.EmbeddingsEndpoint.CreateEmbeddingAsync("The food was delicious and the waiter...", model);
+Console.WriteLine(result);
+```
+
+### [Audio](https://beta.openai.com/docs/api-reference/audio)
+
+Converts audio into text.
+
+#### [Create Transcription](https://platform.openai.com/docs/api-reference/audio/create)
+
+Transcribes audio into the input language.
+
+```csharp
+var api = new OpenAIClient();
+var request = new AudioTranscriptionRequest(Path.GetFullPath(audioAssetPath), language: "en");
+var result = await api.AudioEndpoint.CreateTranscriptionAsync(request);
+Console.WriteLine(result);
+```
+
+#### [Create Translation](https://platform.openai.com/docs/api-reference/audio/create)
+
+Translates audio into into English.
+
+```csharp
+var api = new OpenAIClient();
+var request = new AudioTranslationRequest(Path.GetFullPath(audioAssetPath));
+var result = await api.AudioEndpoint.CreateTranslationAsync(request);
 Console.WriteLine(result);
 ```
 

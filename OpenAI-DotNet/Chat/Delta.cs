@@ -1,20 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 namespace OpenAI.Chat
 {
-    public class Delta
+    public sealed class Delta
     {
-        public Delta(string content)
-        {
-            Content = content ?? "";
-        }
+        [JsonInclude]
+        [JsonPropertyName("role")]
+        public string Role { get; private set; }
 
+        [JsonInclude]
         [JsonPropertyName("content")]
-        public string Content { get; }
+        public string Content { get; private set; }
     }
 }

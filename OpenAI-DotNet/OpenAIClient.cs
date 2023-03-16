@@ -1,4 +1,5 @@
-﻿using OpenAI.Chat;
+﻿using OpenAI.Audio;
+using OpenAI.Chat;
 using OpenAI.Completions;
 using OpenAI.Edits;
 using OpenAI.Embeddings;
@@ -23,23 +24,15 @@ namespace OpenAI
         /// <summary>
         /// Creates a new entry point to the OpenAPI API, handling auth and allowing access to the various API endpoints
         /// </summary>
-        /// <param name="model">The <see cref="Model"/>/model to use for API calls,
-        /// defaulting to <see cref="Model.Davinci"/> if not specified.</param>
-        /// <exception cref="AuthenticationException">Raised when authentication details are missing or invalid.</exception>
-        public OpenAIClient(Model model) : this(null, model) { }
-
-        /// <summary>
-        /// Creates a new entry point to the OpenAPI API, handling auth and allowing access to the various API endpoints
-        /// </summary>
         /// <param name="openAIAuthentication">The API authentication information to use for API calls,
         /// or <see langword="null"/> to attempt to use the <see cref="OpenAI.OpenAIAuthentication.Default"/>,
         /// potentially loading from environment vars or from a config file.</param>
-        /// <param name="model">The <see cref="Model"/> to use for API calls,
-        /// defaulting to <see cref="Model.Davinci"/> if not specified.</param>
+        /// <param name="clientSettings">Optional, <see cref="OpenAIClientSettings"/> for specifying OpenAI deployments to Azure.</param>
         /// <exception cref="AuthenticationException">Raised when authentication details are missing or invalid.</exception>
-        public OpenAIClient(OpenAIAuthentication openAIAuthentication = null, Model model = null)
+        public OpenAIClient(OpenAIAuthentication openAIAuthentication = null, OpenAIClientSettings clientSettings = null)
         {
             OpenAIAuthentication = openAIAuthentication ?? OpenAIAuthentication.Default;
+            OpenAIClientSettings = clientSettings ?? OpenAIClientSettings.Default;
 
             if (OpenAIAuthentication?.ApiKey is null)
             {
@@ -48,28 +41,35 @@ namespace OpenAI
 
             Client = new HttpClient();
             Client.DefaultRequestHeaders.Add("User-Agent", "OpenAI-DotNet");
-            Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", OpenAIAuthentication.ApiKey);
+
+            if (OpenAIClientSettings.ResourceName == OpenAIClientSettings.OpenAIDomain)
+            {
+                Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", OpenAIAuthentication.ApiKey);
+            }
+            else
+            {
+                Client.DefaultRequestHeaders.Add("api-key", OpenAIAuthentication.ApiKey);
+            }
 
             if (!string.IsNullOrWhiteSpace(OpenAIAuthentication.OrganizationId))
             {
                 Client.DefaultRequestHeaders.Add("OpenAI-Organization", OpenAIAuthentication.OrganizationId);
             }
 
-            Version = 1;
             JsonSerializationOptions = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             };
-            DefaultModel = model ?? Model.Default;
             ModelsEndpoint = new ModelsEndpoint(this);
             CompletionsEndpoint = new CompletionsEndpoint(this);
+            ChatEndpoint = new ChatEndpoint(this);
             EditsEndpoint = new EditsEndpoint(this);
             ImagesEndPoint = new ImagesEndpoint(this);
             EmbeddingsEndpoint = new EmbeddingsEndpoint(this);
+            AudioEndpoint = new AudioEndpoint(this);
             FilesEndpoint = new FilesEndpoint(this);
             FineTuningEndpoint = new FineTuningEndpoint(this);
             ModerationsEndpoint = new ModerationsEndpoint(this);
-            ChatEndpoint = new ChatEndpoint(this);
         }
 
         /// <summary>
@@ -87,30 +87,12 @@ namespace OpenAI
         /// </summary>
         public OpenAIAuthentication OpenAIAuthentication { get; }
 
-        /// <summary>
-        /// Specifies which <see cref="Model"/> to use for API calls
-        /// </summary>
-        public Model DefaultModel { get; set; }
-
-        private int version;
-
-        /// <summary>
-        /// Specifies which version of the API to use.
-        /// </summary>
-        public int Version
-        {
-            get => version;
-            set
-            {
-                version = value;
-                BaseUrl = $"https://api.openai.com/v{version}/";
-            }
-        }
+        private OpenAIClientSettings OpenAIClientSettings { get; }
 
         /// <summary>
         /// The base url to use when making calls to the API.
         /// </summary>
-        internal string BaseUrl { get; private set; }
+        internal string BaseRequestUrl => OpenAIClientSettings.BaseRequestUrl;
 
         /// <summary>
         /// List and describe the various models available in the API.
@@ -146,6 +128,11 @@ namespace OpenAI
         /// Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.
         /// </summary>
         public EmbeddingsEndpoint EmbeddingsEndpoint { get; }
+
+        /// <summary>
+        /// Converts audio into text.
+        /// </summary>
+        public AudioEndpoint AudioEndpoint { get; }
 
         /// <summary>
         /// Files are used to upload documents that can be used with features like Fine-tuning.

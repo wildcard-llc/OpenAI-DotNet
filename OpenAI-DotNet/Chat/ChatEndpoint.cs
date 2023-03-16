@@ -1,8 +1,9 @@
 using OpenAI.Completions;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,10 +12,11 @@ namespace OpenAI.Chat
 {
     public sealed class ChatEndpoint : BaseEndPoint
     {
+        /// <inheritdoc />
         public ChatEndpoint(OpenAIClient api) : base(api) { }
 
-        protected override string GetEndpoint()
-            => $"{Api.BaseUrl}chat";
+        /// <inheritdoc />
+        protected override string Root => "chat";
 
         /// <summary>
         /// Creates a completion for the chat message
@@ -24,37 +26,36 @@ namespace OpenAI.Chat
         /// <returns><see cref="ChatResponse"/>.</returns>
         public async Task<ChatResponse> GetCompletionAsync(ChatRequest chatRequest, CancellationToken cancellationToken = default)
         {
-            var json = JsonSerializer.Serialize(chatRequest, Api.JsonSerializationOptions);
-            var payload = json.ToJsonStringContent();
-            var result = await Api.Client.PostAsync($"{GetEndpoint()}/completions", payload, cancellationToken);
-            var resultAsString = await result.ReadAsStringAsync(cancellationToken);
-            return JsonSerializer.Deserialize<ChatResponse>(resultAsString, Api.JsonSerializationOptions);
+            var jsonContent = JsonSerializer.Serialize(chatRequest, Api.JsonSerializationOptions).ToJsonStringContent();
+            var response = await Api.Client.PostAsync(GetUrl("/completions"), jsonContent, cancellationToken).ConfigureAwait(false);
+            var responseAsString = await response.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return response.DeserializeResponse<ChatResponse>(responseAsString, Api.JsonSerializationOptions);
         }
 
-        // TODO Streaming endpoints
+
         /// <summary>
-        /// Ask the API to complete the prompt(s) using the specified request,
-        /// and stream the results to the <paramref name="resultHandler"/> as they come in.
+        /// Created a completion for the chat message and stream the results to the <paramref name="resultHandler"/> as they come in.
         /// </summary>
-        /// <param name="completionRequest">The request to send to the API.</param>
+        /// <param name="chatRequest">The chat request which contains the message content.</param>
         /// <param name="resultHandler">An action to be called as each new result arrives.</param>
         /// <param name="cancellationToken">Optional, <see cref="CancellationToken"/>.</param>
+        /// <returns><see cref="ChatResponse"/>.</returns>
         /// <exception cref="HttpRequestException">Raised when the HTTP request fails</exception>
-        public async Task StreamCompletionAsync(ChatRequest completionRequest, Action<ChatResponse> resultHandler, CancellationToken cancellationToken = default)
+        public async Task StreamCompletionAsync(ChatRequest chatRequest, Action<ChatResponse> resultHandler, CancellationToken cancellationToken = default)
         {
-            completionRequest.Stream = true;
-            var jsonContent = JsonSerializer.Serialize(completionRequest, Api.JsonSerializationOptions);
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"{GetEndpoint()}/completions")
+            chatRequest.Stream = true;
+            var jsonContent = JsonSerializer.Serialize(chatRequest, Api.JsonSerializationOptions).ToJsonStringContent();
+            using var request = new HttpRequestMessage(HttpMethod.Post, GetUrl("/completions"))
             {
-                Content = jsonContent.ToJsonStringContent()
+                Content = jsonContent
             };
-            var response = await Api.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            await response.CheckResponseAsync(cancellationToken).ConfigureAwait(false);
+            var response = await Api.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            await response.CheckResponseAsync(cancellationToken);
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var reader = new StreamReader(stream);
-            while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
+
+            while (await reader.ReadLineAsync() is { } line)
             {
-                
                 if (line.StartsWith("data: "))
                 {
                     line = line["data: ".Length..];
@@ -67,23 +68,51 @@ namespace OpenAI.Chat
 
                 if (!string.IsNullOrWhiteSpace(line))
                 {
-                    resultHandler(DeserializeResult(response, line.Trim()));
+                    resultHandler(response.DeserializeResponse<ChatResponse>(line.Trim(), Api.JsonSerializationOptions));
                 }
             }
-
         }
 
-
-        private ChatResponse DeserializeResult(HttpResponseMessage response, string json)
+        /// <summary>
+        /// Created a completion for the chat message and stream the results as they come in.<br/>
+        /// If you are not using C# 8 supporting IAsyncEnumerable{T} or if you are using the .NET Framework,
+        /// you may need to use <see cref="StreamCompletionAsync(ChatRequest, Action{ChatResponse}, CancellationToken)"/> instead.
+        /// </summary>
+        /// <param name="chatRequest">The chat request which contains the message content.</param>
+        /// <param name="cancellationToken">Optional, <see cref="CancellationToken"/>.</param>
+        /// <returns><see cref="ChatResponse"/>.</returns>
+        /// <exception cref="HttpRequestException">Raised when the HTTP request fails</exception>
+        public async IAsyncEnumerable<ChatResponse> StreamCompletionEnumerableAsync(ChatRequest chatRequest, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            var result = JsonSerializer.Deserialize<ChatResponse>(json, Api.JsonSerializationOptions);
-            Console.WriteLine(result.Choices.First().Delta?.Content);
-            if (result?.Choices == null || result.Choices.Count == 0)
+            chatRequest.Stream = true;
+            var jsonContent = JsonSerializer.Serialize(chatRequest, Api.JsonSerializationOptions).ToJsonStringContent();
+            using var request = new HttpRequestMessage(HttpMethod.Post, GetUrl("/completions"))
             {
-                throw new HttpRequestException($"{nameof(DeserializeResult)} no completions! HTTP status code: {response.StatusCode}. Response body: {json}");
+                Content = jsonContent
+            };
+            var response = await Api.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            await response.CheckResponseAsync(cancellationToken);
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var reader = new StreamReader(stream);
+
+            while (await reader.ReadLineAsync() is { } line &&
+                   !cancellationToken.IsCancellationRequested)
+            {
+                if (line.StartsWith("data: "))
+                {
+                    line = line["data: ".Length..];
+                }
+
+                if (line == "[DONE]")
+                {
+                    yield break;
+                }
+
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    yield return response.DeserializeResponse<ChatResponse>(line.Trim(), Api.JsonSerializationOptions);
+                }
             }
-            result.SetResponseData(response.Headers);
-            return result;
         }
     }
 }

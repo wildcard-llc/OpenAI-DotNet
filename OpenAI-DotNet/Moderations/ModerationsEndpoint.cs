@@ -17,8 +17,7 @@ namespace OpenAI.Moderations
         public ModerationsEndpoint(OpenAIClient api) : base(api) { }
 
         /// <inheritdoc />
-        protected override string GetEndpoint()
-            => $"{Api.BaseUrl}moderations";
+        protected override string Root => "moderations";
 
         /// <summary>
         /// Classifies if text violates OpenAI's Content Policy.
@@ -54,18 +53,10 @@ namespace OpenAI.Moderations
         /// <exception cref="HttpRequestException">Raised when the HTTP request fails</exception>
         public async Task<ModerationsResponse> CreateModerationAsync(ModerationsRequest request)
         {
-            var jsonContent = JsonSerializer.Serialize(request, Api.JsonSerializationOptions);
-            var response = await Api.Client.PostAsync(GetEndpoint(), jsonContent.ToJsonStringContent()).ConfigureAwait(false);
+            var jsonContent = JsonSerializer.Serialize(request, Api.JsonSerializationOptions).ToJsonStringContent();
+            var response = await Api.Client.PostAsync(GetUrl(), jsonContent).ConfigureAwait(false);
             var resultAsString = await response.ReadAsStringAsync().ConfigureAwait(false);
-            var moderationResponse = JsonSerializer.Deserialize<ModerationsResponse>(resultAsString, Api.JsonSerializationOptions);
-
-            if (moderationResponse == null)
-            {
-                throw new HttpRequestException($"{nameof(CreateModerationAsync)} returned no results!  HTTP status code: {response.StatusCode}. Response body: {resultAsString}");
-            }
-
-            moderationResponse.SetResponseData(response.Headers);
-            return moderationResponse;
+            return response.DeserializeResponse<ModerationsResponse>(resultAsString, Api.JsonSerializationOptions);
         }
     }
 }
