@@ -1,4 +1,5 @@
-﻿using OpenAI.Audio;
+﻿using System;
+using OpenAI.Audio;
 using OpenAI.Chat;
 using OpenAI.Completions;
 using OpenAI.Edits;
@@ -41,6 +42,7 @@ namespace OpenAI
 
             Client = new HttpClient();
             Client.DefaultRequestHeaders.Add("User-Agent", "OpenAI-DotNet");
+            Client.Timeout = TimeSpan.FromSeconds(250);
 
             if (OpenAIClientSettings.ResourceName == OpenAIClientSettings.OpenAIDomain)
             {
